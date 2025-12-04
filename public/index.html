@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Candela Obscura Dice – 2D Tray</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: radial-gradient(circle at top, #111827, #020617 60%);
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .app {
+      max-width: 1100px;
+      width: 100%;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      background: rgba(15,23,42,0.96);
+      border-radius: 16px;
+      padding: 16px 20px;
+      border: 1px solid rgba(148,163,184,0.25);
+      box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+    }
+    .title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .title .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg,#f97316,#facc15);
+      color:#111;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:800;
+    }
+    button {
+      border-radius: 999px;
+      border: none;
+      padding: 9px 16px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: .08s;
+    }
+    button.primary {
+      background: linear-gradient(to right,#f97316,#facc15);
+      color:#111;
+      font-weight:600;
+    }
+    button.secondary {
+      background:#1e293b;
+      border:1px solid #475569;
+      color:#fff;
+    }
+    button.danger {
+      background:#7f1d1d;
+      border:1px solid #fecaca;
+      color:#fee2e2;
+    }
+    button:disabled {
+      opacity:0.4;
+      cursor: default;
+    }
+    input {
+      width:100%;
+      padding:8px;
+      border-radius:999px;
+      background:#0f172a;
+      border:1px solid #475569;
+      color:#fff;
+    }
+    label {
+      font-size:0.8rem;
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+      color:#9ca3af;
+      margin-bottom:4px;
+      display:block;
+    }
+    .row { display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+    .grow { flex:1; }
+
+    .columns {
+      display:grid;
+      grid-template-columns:260px 1fr;
+      gap:12px;
+    }
+    @media (max-width:750px){
+      .columns { grid-template-columns:1fr; }
+    }
+
+    .user-list { list-style:none;margin:0;padding:0;font-size:0.9rem; }
+    .user-list li { padding:2px 0; }
+
+    .log {
+      max-height:280px;
+      overflow-y:auto;
+      padding-right:4px;
+      margin-bottom:10px;
+    }
+    .roll-entry {
+      border-bottom:1px solid rgba(30,64,175,0.3);
+      padding:8px 0;
+    }
+    .dice-row { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+    .die {
+      width:34px; height:34px;
+      border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:700; font-size:1rem;
+      background:#1f2937;
+      border:1px solid #0f172a;
+    }
+    .die.gilded {
+      background:linear-gradient(135deg,#fef3c7,#f97316);
+      border-color:#facc15;
+      color:#111;
+    }
+
+    #dice-tray {
+      width:100%;
+      height:260px;
+      margin-top:16px;
+      border-radius:12px;
+      border:1px solid #334155;
+      background: radial-gradient(circle at top, #020617, #020617 50%, #000 100%);
+      box-shadow: inset 0 18px 40px rgba(15,23,42,0.9);
+      position:relative;
+      overflow:hidden;
+    }
+    #diceCanvas {
+      width:100%;
+      height:100%;
+      display:block;
+    }
+
+    .error {
+      color:#fca5a5;
+      font-size:0.85rem;
+      margin-top:4px;
+      display:none;
+    }
+  </style>
+</head>
+
+<body>
+<div class="app">
+
+  <div class="card">
+    <div class="title">
+      <div class="logo">C</div>
+      Candela Obscura – Shared Dice Room
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <div class="grow">
+        <label>Your Name</label>
+        <input id="nameInput" placeholder="Circle member"/>
+      </div>
+      <div class="grow">
+        <label>Session Code</label>
+        <input id="sessionInput" placeholder="LUMEN"/>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="primary" id="joinButton">Join / Create</button>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div id="statusDot" style="width:10px;height:10px;border-radius:50%;background:#ef4444;"></div>
+          <span id="statusText">Disconnected</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:10px;">
+      <button id="leaveButton" class="secondary" disabled>Leave</button>
+      <button id="refreshButton" class="secondary" disabled>Refresh</button>
+    </div>
+
+    <div id="joinError" class="error"></div>
+  </div>
+
+  <div class="columns">
+    <div class="card">
+      <h3>Participants</h3>
+      <ul id="userList" class="user-list"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Roll Dice</h3>
+
+      <div class="row">
+        <div class="grow">
+          <label>Dice (1–6)</label>
+          <input id="numDiceInput" type="number" min="1" max="6" value="3"/>
+        </div>
+        <div class="grow">
+          <label>Gilded Dice</label>
+          <input id="numGildedInput" type="number" min="0" max="6" value="1"/>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:10px;">
+        <button id="rollButton" class="primary" disabled>Roll Dice</button>
+        <button id="hiddenRollButton" class="secondary" disabled>Hidden Roll</button>
+        <button id="clearButton" class="danger" disabled>Clear History</button>
+      </div>
+
+      <div id="rollError" class="error"></div>
+
+      <hr style="margin:16px 0;border-color:#334155;"/>
+
+      <div class="roll-header" style="margin-bottom:6px;">
+        <div>Roll Log</div>
+        <div id="sessionIndicator">No session</div>
+      </div>
+
+      <div id="log" class="log"></div>
+
+      <!-- Dice tray at the bottom -->
+      <div id="dice-tray">
+        <canvas id="diceCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  let joined = false;
+  let isGM = false;
+  let currentSessionId = null;
+
+  const clientId = localStorage.getItem("candelaDiceClientId")
+    || ("c-" + Math.random().toString(36).slice(2));
+  localStorage.setItem("candelaDiceClientId", clientId);
+
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const joinError = document.getElementById("joinError");
+  const rollError = document.getElementById("rollError");
+
+  function setStatus(online) {
+    statusDot.style.background = online ? "#22c55e" : "#ef4444";
+    statusText.textContent = online ? "Connected" : "Disconnected";
+  }
+
+  function setJoinError(msg) {
+    joinError.textContent = msg || "";
+    joinError.style.display = msg ? "block" : "none";
+  }
+
+  function setRollError(msg) {
+    rollError.textContent = msg || "";
+    rollError.style.display = msg ? "block" : "none";
+  }
+
+  function renderUsers(users) {
+    const list = document.getElementById("userList");
+    list.innerHTML = "";
+    users.forEach(u => {
+      const li = document.createElement("li");
+      li.textContent = u.name + (u.isGM ? " (GM)" : "");
+      list.appendChild(li);
+    });
+  }
+
+  function renderRoll(roll) {
+    const logEl = document.getElementById("log");
+    const entry = document.createElement("div");
+    entry.className = "roll-entry";
+
+    const header = document.createElement("div");
+    header.className = "roll-header";
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+
+    const left = document.createElement("div");
+    left.textContent = roll.by + (roll.hidden ? " (hidden)" : "");
+
+    const right = document.createElement("div");
+    right.textContent = new Date(roll.timestamp)
+      .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    header.appendChild(left);
+    header.appendChild(right);
+
+    const diceRow = document.createElement("div");
+    diceRow.className = "dice-row";
+
+    let highest = 0;
+
+
+    roll.dice.forEach(d => {
+      const die = document.createElement("div");
+      die.className = "die";
+      if (d.gilded) die.classList.add("gilded");
+      die.textContent = d.value;
+      if (d.value === highest) {
+        die.style.boxShadow = "0 0 0 2px rgba(34,197,94,0.9)";
+      }
+      diceRow.appendChild(die);
+    });
+    entry.appendChild(header);
+    entry.appendChild(diceRow);
+    logEl.prepend(entry);
+  }
+
+  /* ---------- 2D Dice Tray Animation ---------- */
+
+  const canvas = document.getElementById("diceCanvas");
+  const ctx = canvas.getContext("2d");
+  let animationId = null;
+
+  function resizeCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  function animateDiceTray(dice) {
+    if (!dice || dice.length === 0) return;
+    if (animationId) cancelAnimationFrame(animationId);
+
+    const start = performance.now();
+    const duration = 900;
+
+    const trayWidth = canvas.width / (window.devicePixelRatio || 1);
+    const trayHeight = canvas.height / (window.devicePixelRatio || 1);
+
+    const dieSize = 42;
+    const spacing = Math.min(80, (trayWidth - 40) / Math.max(dice.length, 1));
+    const baseY = trayHeight * 0.65;
+    const originX = (trayWidth - spacing * (dice.length - 1)) / 2;
+
+    const dies = dice.map((d, i) => ({
+      value: d.value,
+      gilded: d.gilded,
+      x: originX + spacing * i,
+      rotationOffset: (Math.random() * 0.6 - 0.3),
+      phase: Math.random() * Math.PI * 2
+    }));
+
+    function frame(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const dpr = window.devicePixelRatio || 1;
+
+      ctx.clearRect(0, 0, trayWidth, trayHeight);
+
+      // subtle gradient background
+      const grad = ctx.createLinearGradient(0, 0, 0, trayHeight);
+      grad.addColorStop(0, "#020617");
+      grad.addColorStop(1, "#020617");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, trayWidth, trayHeight);
+
+      dies.forEach((die, index) => {
+        const progress = t;
+        const bounceAmp = 60;
+        const bounce =
+          Math.abs(Math.sin((now / 160) + die.phase)) *
+          bounceAmp *
+          (1 - progress);
+
+        const y = baseY - bounce;
+        const angle = die.rotationOffset * (1 - progress) * 2;
+
+        drawPseudo3DDie(die.x, y, dieSize, angle, die.value, die.gilded);
+      });
+
+      if (t < 1) {
+        animationId = requestAnimationFrame(frame);
+      } else {
+        // final settled frame
+        ctx.clearRect(0, 0, trayWidth, trayHeight);
+        const grad2 = ctx.createLinearGradient(0, 0, 0, trayHeight);
+        grad2.addColorStop(0, "#020617");
+        grad2.addColorStop(1, "#020617");
+        ctx.fillStyle = grad2;
+        ctx.fillRect(0, 0, trayWidth, trayHeight);
+
+        dies.forEach(die => {
+          drawPseudo3DDie(die.x, baseY, dieSize, 0, die.value, die.gilded);
+        });
+      }
+    }
+
+    animationId = requestAnimationFrame(frame);
+  }
+
+  function drawPseudo3DDie(cx, cy, size, angle, value, gilded) {
+    const half = size / 2;
+    const depth = 8;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // shadow
+    ctx.save();
+    ctx.translate(0, half + 6);
+    ctx.scale(1.1, 0.35);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, half, half, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(15,23,42,0.7)";
+    ctx.fill();
+    ctx.restore();
+
+    // side face
+    ctx.beginPath();
+    ctx.moveTo(-half, -half);
+    ctx.lineTo(-half + depth, -half - depth);
+    ctx.lineTo(half + depth, -half - depth);
+    ctx.lineTo(half, -half);
+    ctx.closePath();
+    ctx.fillStyle = gilded ? "#f97316" : "#020617";
+    ctx.fill();
+
+    // front face
+    const faceGrad = ctx.createLinearGradient(-half, -half, half, half);
+    if (gilded) {
+      faceGrad.addColorStop(0, "#fef3c7");
+      faceGrad.addColorStop(1, "#f97316");
+    } else {
+      faceGrad.addColorStop(0, "#1f2937");
+      faceGrad.addColorStop(1, "#020617");
+    }
+    ctx.beginPath();
+    ctx.moveTo(-half, -half);
+    ctx.lineTo(half, -half);
+    ctx.lineTo(half, half);
+    ctx.lineTo(-half, half);
+    ctx.closePath();
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = gilded ? "rgba(250,204,21,0.9)" : "rgba(15,23,42,0.9)";
+    ctx.stroke();
+
+    // pips / number
+    ctx.fillStyle = gilded ? "#111827" : "#e5e7eb";
+    ctx.font = "bold 20px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(value), 0, 2);
+
+    ctx.restore();
+  }
+
+  /* ---------- SOCKET + UI WIRING ---------- */
+
+  const nameInput = document.getElementById("nameInput");
+  const sessionInput = document.getElementById("sessionInput");
+  const leaveButton = document.getElementById("leaveButton");
+  const refreshButton = document.getElementById("refreshButton");
+  const rollButton = document.getElementById("rollButton");
+  const hiddenRollButton = document.getElementById("hiddenRollButton");
+  const clearButton = document.getElementById("clearButton");
+  const sessionIndicator = document.getElementById("sessionIndicator");
+
+  document.getElementById("joinButton").onclick = () => {
+    const name = nameInput.value.trim() || "Anonymous";
+    const sessionId = sessionInput.value.trim().toUpperCase();
+
+    if (!sessionId) {
+      setJoinError("Enter a session code.");
+      return;
+    }
+    setJoinError("");
+
+    socket.emit("joinSession", { sessionId, name, clientId });
+  };
+
+  leaveButton.onclick = () => {
+    socket.emit("leaveSession");
+    resetUI();
+  };
+
+  refreshButton.onclick = () => {
+    socket.emit("refreshSession");
+  };
+
+  rollButton.onclick = () => {
+    const nd = Number(document.getElementById("numDiceInput").value);
+    const ng = Number(document.getElementById("numGildedInput").value);
+    socket.emit("rollDice", { numDice: nd, numGilded: ng, hidden:false });
+  };
+
+  hiddenRollButton.onclick = () => {
+    const nd = Number(document.getElementById("numDiceInput").value);
+    const ng = Number(document.getElementById("numGildedInput").value);
+    socket.emit("rollDice", { numDice: nd, numGilded: ng, hidden:true });
+  };
+
+  clearButton.onclick = () => {
+    if (isGM) socket.emit("clearHistory");
+  };
+
+  function resetUI() {
+    joined = false;
+    isGM = false;
+    currentSessionId = null;
+    leaveButton.disabled = true;
+    refreshButton.disabled = true;
+    rollButton.disabled = true;
+    hiddenRollButton.disabled = true;
+    clearButton.disabled = true;
+    document.getElementById("userList").innerHTML = "";
+    document.getElementById("log").innerHTML = "";
+    sessionIndicator.textContent = "No session";
+  }
+
+  socket.on("connect", () => setStatus(true));
+  socket.on("disconnect", () => setStatus(false));
+
+  socket.on("sessionJoined", (p) => {
+    joined = true;
+    isGM = p.isGM;
+    currentSessionId = p.sessionId;
+
+    leaveButton.disabled = false;
+    refreshButton.disabled = false;
+    rollButton.disabled = false;
+    hiddenRollButton.disabled = false;
+    clearButton.disabled = !isGM;
+
+    sessionIndicator.textContent = "Session: " + currentSessionId;
+
+    renderUsers(p.users);
+    document.getElementById("log").innerHTML = "";
+    p.history.forEach(r => renderRoll(r));
+  });
+
+  socket.on("sessionState", (p) => {
+    isGM = p.isGM;
+    clearButton.disabled = !isGM;
+    sessionIndicator.textContent = "Session: " + p.sessionId;
+    renderUsers(p.users);
+    document.getElementById("log").innerHTML = "";
+    p.history.forEach(r => renderRoll(r));
+  });
+
+  socket.on("userJoined", p => renderUsers(p.users));
+  socket.on("userLeft", p => renderUsers(p.users));
+  socket.on("historyCleared", () => document.getElementById("log").innerHTML = "");
+
+  socket.on("diceRolled", (roll) => {
+    if (roll.clientId === clientId || (roll.hidden && isGM)) {
+      animateDiceTray(roll.dice);
+    }
+    renderRoll(roll);
+  });
+
+  socket.on("errorMessage", msg => setRollError(msg));
+</script>
+</body>
+</html>
