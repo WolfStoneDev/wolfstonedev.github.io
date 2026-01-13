@@ -296,7 +296,8 @@
     list.innerHTML = "";
     users.forEach(u => {
       const li = document.createElement("li");
-      li.textContent = u.name + (u.isGM ? " (GM)" : "");
+      const idSuffix = u.clientId ? " [" + u.clientId + "]" : "";
+      li.textContent = u.name + (u.isGM ? " (GM)" : "") + idSuffix;
       list.appendChild(li);
     });
   }

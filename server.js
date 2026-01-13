@@ -21,8 +21,10 @@ app.use(express.static(path.join(__dirname, "public")));
 //   gmClientId: string | null
 //   gmSocketId: string | null
 //   history: Roll[]
+//   cleanupTimer: NodeJS.Timeout | null
 // }>
 const sessions = new Map();
+const EMPTY_SESSION_GRACE_MS = 60 * 60 * 1000;
 
 function normalizeSessionId(id) {
   if (!id) return null;
@@ -36,6 +38,7 @@ function getOrCreateSession(sessionId) {
       gmClientId: null,
       gmSocketId: null,
       history: [],
+      cleanupTimer: null,
     });
   }
   return sessions.get(sessionId);
@@ -53,14 +56,18 @@ function makeRoll({ by, sessionId, dice, hidden, clientId }) {
   };
 }
 
-function buildUsersPayload(session) {
+function buildUsersPayload(session, includeClientIds) {
   const users = [];
   for (const [socketId, info] of session.users.entries()) {
-    users.push({
+    const entry = {
       id: socketId,
       name: info.name,
       isGM: info.clientId === session.gmClientId,
-    });
+    };
+    if (includeClientIds) {
+      entry.clientId = info.clientId;
+    }
+    users.push(entry);
   }
   return users;
 }
@@ -74,9 +81,25 @@ function buildHistoryForClient(session, clientId) {
 function cleanupSessionIfEmpty(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
-  if (session.users.size === 0 && session.history.length === 0) {
-    sessions.delete(sessionId);
+  if (session.users.size > 0) {
+    if (session.cleanupTimer) {
+      clearTimeout(session.cleanupTimer);
+      session.cleanupTimer = null;
+    }
+    return;
   }
+
+  if (session.cleanupTimer) return;
+
+  session.cleanupTimer = setTimeout(() => {
+    const current = sessions.get(sessionId);
+    if (!current) return;
+    if (current.users.size === 0 && current.history.length === 0) {
+      sessions.delete(sessionId);
+      return;
+    }
+    current.cleanupTimer = null;
+  }, EMPTY_SESSION_GRACE_MS);
 }
 
 io.on("connection", (socket) => {
@@ -97,6 +120,10 @@ io.on("connection", (socket) => {
     }
 
     const session = getOrCreateSession(normalized);
+    if (session.cleanupTimer) {
+      clearTimeout(session.cleanupTimer);
+      session.cleanupTimer = null;
+    }
 
     socket.data.sessionId = normalized;
     socket.data.name = safeName;
@@ -115,9 +142,9 @@ io.on("connection", (socket) => {
       session.gmSocketId = socket.id;
     }
 
-    const usersPayload = buildUsersPayload(session);
-    const historyForClient = buildHistoryForClient(session, safeClientId);
     const isGM = safeClientId === session.gmClientId;
+    const usersPayload = buildUsersPayload(session, isGM);
+    const historyForClient = buildHistoryForClient(session, safeClientId);
 
     socket.emit("sessionJoined", {
       sessionId: normalized,
@@ -126,7 +153,21 @@ io.on("connection", (socket) => {
       history: historyForClient,
     });
 
-    socket.to(normalized).emit("userJoined", { users: usersPayload });
+    const publicUsersPayload = buildUsersPayload(session, false);
+    const gmSocketId = session.gmSocketId;
+    const gmConnected = gmSocketId && session.users.has(gmSocketId);
+
+    let broadcast = socket.to(normalized);
+    if (gmConnected) {
+      broadcast = broadcast.except(gmSocketId);
+    }
+    broadcast.emit("userJoined", { users: publicUsersPayload });
+
+    if (gmConnected && gmSocketId !== socket.id) {
+      io.to(gmSocketId).emit("userJoined", {
+        users: buildUsersPayload(session, true),
+      });
+    }
   });
 
   // Soft refresh of session state
@@ -139,9 +180,9 @@ io.on("connection", (socket) => {
     }
 
     const session = sessions.get(sessionId);
-    const usersPayload = buildUsersPayload(session);
-    const historyForClient = buildHistoryForClient(session, clientId);
     const isGM = clientId && clientId === session.gmClientId;
+    const usersPayload = buildUsersPayload(session, isGM);
+    const historyForClient = buildHistoryForClient(session, clientId);
 
     socket.emit("sessionState", {
       sessionId,
@@ -237,8 +278,21 @@ io.on("connection", (socket) => {
     socket.leave(sessionId);
     socket.data.sessionId = null;
 
-    const usersPayload = buildUsersPayload(session);
-    socket.to(sessionId).emit("userLeft", { users: usersPayload });
+    const publicUsersPayload = buildUsersPayload(session, false);
+    const gmSocketId = session.gmSocketId;
+    const gmConnected = gmSocketId && session.users.has(gmSocketId);
+
+    let broadcast = socket.to(sessionId);
+    if (gmConnected) {
+      broadcast = broadcast.except(gmSocketId);
+    }
+    broadcast.emit("userLeft", { users: publicUsersPayload });
+
+    if (gmConnected && gmSocketId !== socket.id) {
+      io.to(gmSocketId).emit("userLeft", {
+        users: buildUsersPayload(session, true),
+      });
+    }
 
     cleanupSessionIfEmpty(sessionId);
   });
@@ -255,8 +309,21 @@ io.on("connection", (socket) => {
       session.gmSocketId = null; // keep gmClientId for reconnect
     }
 
-    const usersPayload = buildUsersPayload(session);
-    socket.to(sessionId).emit("userLeft", { users: usersPayload });
+    const publicUsersPayload = buildUsersPayload(session, false);
+    const gmSocketId = session.gmSocketId;
+    const gmConnected = gmSocketId && session.users.has(gmSocketId);
+
+    let broadcast = socket.to(sessionId);
+    if (gmConnected) {
+      broadcast = broadcast.except(gmSocketId);
+    }
+    broadcast.emit("userLeft", { users: publicUsersPayload });
+
+    if (gmConnected) {
+      io.to(gmSocketId).emit("userLeft", {
+        users: buildUsersPayload(session, true),
+      });
+    }
 
     cleanupSessionIfEmpty(sessionId);
   });
