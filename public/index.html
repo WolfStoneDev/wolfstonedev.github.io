@@ -243,6 +243,26 @@
 <script>
   const socket = io();
 
+  const STORAGE = {
+    name: "candelaDiceName",
+    session: "candelaDiceSessionId",
+  };
+
+  function getSavedName() {
+    return (localStorage.getItem(STORAGE.name) || "").trim();
+  }
+
+  function getSavedSessionId() {
+    return (localStorage.getItem(STORAGE.session) || "").trim();
+  }
+
+  function attemptAutoJoin() {
+    const sessionId = getSavedSessionId();
+    if (!sessionId) return;
+    const name = getSavedName() || "Anonymous";
+    socket.emit("joinSession", { sessionId, name, clientId });
+  }
+
   let joined = false;
   let isGM = false;
   let currentSessionId = null;
@@ -470,6 +490,12 @@
 
   const nameInput = document.getElementById("nameInput");
   const sessionInput = document.getElementById("sessionInput");
+
+  const savedName = getSavedName();
+  if (savedName) nameInput.value = savedName;
+  const savedSessionId = getSavedSessionId();
+  if (savedSessionId) sessionInput.value = savedSessionId;
+
   const leaveButton = document.getElementById("leaveButton");
   const refreshButton = document.getElementById("refreshButton");
   const rollButton = document.getElementById("rollButton");
@@ -492,6 +518,7 @@
 
   leaveButton.onclick = () => {
     socket.emit("leaveSession");
+    localStorage.removeItem(STORAGE.session);
     resetUI();
   };
 
@@ -529,13 +556,19 @@
     sessionIndicator.textContent = "No session";
   }
 
-  socket.on("connect", () => setStatus(true));
+  socket.on("connect", () => {
+    setStatus(true);
+    attemptAutoJoin();
+  });
   socket.on("disconnect", () => setStatus(false));
 
   socket.on("sessionJoined", (p) => {
     joined = true;
     isGM = p.isGM;
     currentSessionId = p.sessionId;
+
+    localStorage.setItem(STORAGE.name, nameInput.value.trim() || "Anonymous");
+    localStorage.setItem(STORAGE.session, currentSessionId);
 
     leaveButton.disabled = false;
     refreshButton.disabled = false;

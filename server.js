@@ -8,7 +8,10 @@ const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  pingInterval: 25000,
+  pingTimeout: 60000,
+});
 
 // Serve static client
 app.use(express.static(path.join(__dirname, "public")));

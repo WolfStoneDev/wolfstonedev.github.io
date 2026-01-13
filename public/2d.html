@@ -384,6 +384,26 @@
   <script>
     const socket = io();
 
+    const STORAGE = {
+      name: "candelaDiceName",
+      session: "candelaDiceSessionId",
+    };
+
+    function getSavedName() {
+      return (localStorage.getItem(STORAGE.name) || "").trim();
+    }
+
+    function getSavedSessionId() {
+      return (localStorage.getItem(STORAGE.session) || "").trim();
+    }
+
+    function attemptAutoJoin() {
+      const sessionId = getSavedSessionId();
+      if (!sessionId) return;
+      const name = getSavedName() || "Anonymous";
+      socket.emit("joinSession", { sessionId, name, clientId });
+    }
+
     let currentSessionId = null;
     let isGM = false;
     let joined = false;
@@ -398,6 +418,12 @@
     const refreshButton = document.getElementById("refreshButton");
     const nameInput = document.getElementById("nameInput");
     const sessionInput = document.getElementById("sessionInput");
+
+    const savedName = getSavedName();
+    if (savedName) nameInput.value = savedName;
+    const savedSessionId = getSavedSessionId();
+    if (savedSessionId) sessionInput.value = savedSessionId;
+
     const rollButton = document.getElementById("rollButton");
     const hiddenRollButton = document.getElementById("hiddenRollButton");
     const clearButton = document.getElementById("clearButton");
@@ -610,6 +636,7 @@
 
     leaveButton.addEventListener("click", () => {
       socket.emit("leaveSession");
+      localStorage.removeItem(STORAGE.session);
       resetUI();
     });
 
@@ -642,13 +669,19 @@
     });
 
     // Socket events
-    socket.on("connect", () => setStatus("Connected", true));
+    socket.on("connect", () => {
+      setStatus("Connected", true);
+      attemptAutoJoin();
+    });
     socket.on("disconnect", () => setStatus("Disconnected", false));
 
     socket.on("sessionJoined", (p) => {
       joined = true;
       currentSessionId = p.sessionId;
       isGM = p.isGM;
+
+      localStorage.setItem(STORAGE.name, nameInput.value.trim() || "Anonymous");
+      localStorage.setItem(STORAGE.session, currentSessionId);
 
       leaveButton.disabled = false;
       refreshButton.disabled = false;
